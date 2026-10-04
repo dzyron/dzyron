@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Implement Agent Review</title>
+<style>
+  :root {
+    --bg: #f7f7f5; --surface: #ffffff; --text: #1d1d1f; --muted: #5f6368; --border: #dcdcd8;
+    --accent: #2f6fdb; --accent-soft: #e6eefc; --warn: #b26a00; --warn-soft: #fff3df;
+    --bad: #c0392b; --bad-soft: #fde8e6; --ok: #1e8449; --ok-soft: #e4f5ea;
+    --code-bg: #f0f0ec; --agent: #f3ecfb; --agent-border: #8e5bd0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #151517; --surface: #1f1f23; --text: #ececf0; --muted: #a0a0aa; --border: #34343a;
+      --accent: #7aa7ff; --accent-soft: #1d2a44; --warn: #f0b04a; --warn-soft: #3a2c12;
+      --bad: #ff7a6b; --bad-soft: #3d1c19; --ok: #5fd38d; --ok-soft: #163222;
+      --code-bg: #2a2a30; --agent: #2a2138; --agent-border: #b48cf0;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #151517; --surface: #1f1f23; --text: #ececf0; --muted: #a0a0aa; --border: #34343a;
+    --accent: #7aa7ff; --accent-soft: #1d2a44; --warn: #f0b04a; --warn-soft: #3a2c12;
+    --bad: #ff7a6b; --bad-soft: #3d1c19; --ok: #5fd38d; --ok-soft: #163222;
+    --code-bg: #2a2a30; --agent: #2a2138; --agent-border: #b48cf0;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.6 -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1040px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  h2 { font-size: 20px; margin: 40px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 16px; margin: 20px 0 8px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; margin: 12px 0; }
+  .tldr { border-left: 4px solid var(--accent); }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 16px 0; }
+  .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+  .kpi .v { font-size: 24px; font-weight: 700; }
+  .kpi .l { color: var(--muted); font-size: 13px; }
+  .tbl-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; background: var(--surface); font-size: 14px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { background: var(--code-bg); font-weight: 600; }
+  td.num, th.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .tag { display: inline-block; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 10px; white-space: nowrap; }
+  .t-high { background: var(--bad-soft); color: var(--bad); }
+  .t-med { background: var(--warn-soft); color: var(--warn); }
+  .t-low { background: var(--accent-soft); color: var(--accent); }
+  .t-ok { background: var(--ok-soft); color: var(--ok); }
+  .finding { border-left: 4px solid var(--border); }
+  .finding.high { border-left-color: var(--bad); }
+  .finding.med { border-left-color: var(--warn); }
+  .finding.low { border-left-color: var(--accent); }
+  .finding h3 { margin-top: 0; }
+  .muted { color: var(--muted); font-size: 13px; }
+  svg { display: block; width: 100%; height: auto; }
+  svg text { fill: var(--text); font-family: inherit; }
+  .flow-box { fill: var(--surface); stroke: var(--border); stroke-width: 1.2; }
+  .flow-agent { fill: var(--agent); stroke: var(--agent-border); stroke-width: 1.5; }
+  .flow-loop { fill: none; stroke: var(--agent-border); stroke-dasharray: 5 4; stroke-width: 1.2; }
+  .flow-line { stroke: var(--muted); stroke-width: 1.4; fill: none; }
+  .flow-hot { fill: var(--bad-soft); stroke: var(--bad); stroke-width: 1.2; }
+  .t-small { font-size: 11px; fill: var(--muted); }
+  .t-bold { font-weight: 700; font-size: 13px; }
+  .t-norm { font-size: 12px; }
+  .t-tok { font-size: 11px; font-weight: 700; fill: var(--accent); }
+  .t-hot { font-size: 11px; font-weight: 700; fill: var(--bad); }
+  .axis { stroke: var(--border); stroke-width: 1; }
+  .grid { stroke: var(--border); stroke-width: 0.6; stroke-dasharray: 2 4; }
+  .line-batch { stroke: var(--bad); stroke-width: 2.4; fill: none; }
+  .line-doc { stroke: var(--ok); stroke-width: 2.4; fill: none; }
+  .limit { stroke: var(--warn); stroke-width: 1.4; stroke-dasharray: 6 4; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; margin-right: 16px; font-size: 13px; }
+  .sw { width: 14px; height: 4px; border-radius: 2px; display: inline-block; }
+  ol li, ul li { margin: 3px 0; }
+  footer { margin-top: 40px; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+<h1>Review agent <code>implement</code> — backend-webflux-plugin</h1>
+<p class="sub">Luồng chạy, chi phí token từng bước và các điểm cần sửa · 03/10/2026 · Nguồn review: <code>~/.claude/plugins/marketplaces/ohmyhotelco/backend-webflux-plugin</code> (commit <code>6ab7e5e</code>), so với bản đang cài trong <code>cache/…/0.1.0</code></p>
+
+<div class="card tldr">
+  <strong>Kết luận:</strong> Agent thiết kế TDD chặt và đã có “Test-Run Protocol” để chặn log Gradle tràn context — hướng đúng.
+  Nhưng chi phí thật <em>không nằm ở prompt</em> mà ở <strong>context tích lũy qua từng lượt</strong>: mỗi scenario thêm khoảng 8k token và ~15 lượt tool,
+  và mọi lượt sau đều đọc lại toàn bộ. Quyết định gom nhiều work document vào <strong>một</strong> agent (để “tiết kiệm Phase 0 ~10k”) khiến tổng input tăng theo
+  <strong>bình phương</strong>: với 3 entity × 10 scenario, ước tính <strong>~65M token input</strong> so với <strong>~29M</strong> nếu chạy mỗi document một agent mới, và context cuối (~265k) vượt cửa sổ 200k nên bị auto-compact, làm mất các convention đã nạp ở Phase 0.
+  Ngoài ra, bản plugin đang cài <strong>chưa có</strong> Test-Run Protocol vì version vẫn là <code>0.1.0</code>.
+</div>
+
+<div class="kpis">
+  <div class="kpi"><div class="v">~13k</div><div class="l">Context cố định khi agent khởi động (system + định nghĩa agent + tool)</div></div>
+  <div class="kpi"><div class="v">~9–13k</div><div class="l">Phase 0: nạp template (tuỳ profile r2dbc/mybatis, logging)</div></div>
+  <div class="kpi"><div class="v">~8k / 15 lượt</div><div class="l">Context tăng thêm mỗi scenario trên happy path (RED→GREEN 1 lần)</div></div>
+  <div class="kpi"><div class="v">2,2×</div><div class="l">Tổng input khi gom 3 document vào 1 agent so với tách 3 agent</div></div>
+</div>
+
+<h2>1. Luồng đi end-to-end</h2>
+<p>Skill <code>be-code</code> chạy trong context chính, sau đó gọi agent <code>implement</code> <strong>một lần</strong> (subagent, context riêng). Khối tím là phần chạy trong agent. Số màu xanh là token thêm vào context của bước đó; số màu đỏ là các điểm nóng.</p>
+<div class="card">
+<svg viewBox="0 0 1000 760" role="img" aria-label="Sơ đồ luồng be-code và implement agent">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="currentColor" style="color: var(--muted)"></path>
+    </marker>
+  </defs>
+
+  <!-- be-code main context column -->
+  <text x="20" y="22" class="t-bold">be-code (context chính)</text>
+  <rect x="20" y="34" width="250" height="54" rx="8" class="flow-box"></rect>
+  <text x="32" y="56" class="t-norm">Step 0–1: config, pluginRoot, parse arg</text>
+  <text x="32" y="76" class="t-tok">SKILL.md ~6,5k + config ~0,4k</text>
+
+  <rect x="20" y="104" width="250" height="54" rx="8" class="flow-box"></rect>
+  <text x="32" y="126" class="t-norm">Step 1.5–2: plan.json, core-conventions</text>
+  <text x="32" y="146" class="t-tok">~1,3k + plan.json 2–6k</text>
+
+  <rect x="20" y="174" width="250" height="54" rx="8" class="flow-box"></rect>
+  <text x="32" y="196" class="t-norm">Step 3: sinh/duyệt work document</text>
+  <text x="32" y="216" class="t-tok">~1k template + 2–3k/doc (output)</text>
+
+  <rect x="20" y="244" width="250" height="54" rx="8" class="flow-box"></rect>
+  <text x="32" y="266" class="t-norm">Step 3.5–3.7: demotion, lock, progress</text>
+  <text x="32" y="286" class="t-tok">~1–2k</text>
+
+  <rect x="20" y="314" width="250" height="54" rx="8" class="flow-box"></rect>
+  <text x="32" y="336" class="t-norm">Step 4: git status baseline → Agent()</text>
+  <text x="32" y="356" class="t-tok">prompt gửi agent ~0,6k</text>
+
+  <rect x="20" y="600" width="250" height="54" rx="8" class="flow-box"></rect>
+  <text x="32" y="622" class="t-norm">Step 5: {buildCommand} toàn bộ</text>
+  <text x="32" y="642" class="t-hot">log build KHÔNG lọc → 2–30k</text>
+
+  <rect x="20" y="670" width="250" height="54" rx="8" class="flow-box"></rect>
+  <text x="32" y="692" class="t-norm">Step 6–7: git diff, report, progress, unlock</text>
+  <text x="32" y="712" class="t-tok">~1–3k</text>
+
+  <line x1="145" y1="88" x2="145" y2="104" class="flow-line" marker-end="url(#arr)"></line>
+  <line x1="145" y1="158" x2="145" y2="174" class="flow-line" marker-end="url(#arr)"></line>
+  <line x1="145" y1="228" x2="145" y2="244" class="flow-line" marker-end="url(#arr)"></line>
+  <line x1="145" y1="298" x2="145" y2="314" class="flow-line" marker-end="url(#arr)"></line>
+  <path d="M270,341 L320,341" class="flow-line" marker-end="url(#arr)"></path>
+  <path d="M320,627 L270,627" class="flow-line" marker-end="url(#arr)"></path>
+  <text x="276" y="616" class="t-small">kết quả cuối</text>
+  <line x1="145" y1="654" x2="145" y2="670" class="flow-line" marker-end="url(#arr)"></line>
+
+  <!-- agent container -->
+  <rect x="320" y="10" width="665" height="740" rx="12" class="flow-agent"></rect>
+  <text x="336" y="34" class="t-bold">Agent implement (model: opus · context riêng)</text>
+  <text x="336" y="52" class="t-small">Khởi động: system Claude Code + 6 tool schema + CLAUDE.md của project ≈ 9k · implement.md ≈ 3,8k</text>
+
+  <rect x="336" y="66" width="300" height="118" rx="8" class="flow-box"></rect>
+  <text x="348" y="86" class="t-bold">Phase 0 — Load Context (1 lần)</text>
+  <text x="348" y="104" class="t-small">core-conventions 1,3k · tdd-rules 2,1k</text>
+  <text x="348" y="120" class="t-small">cqrs-module 1,3k · entity-conventions 0,8k</text>
+  <text x="348" y="136" class="t-small">r2dbc 2,5k | mybatis 3,4k (cả hai nếu batch trộn)</text>
+  <text x="348" y="152" class="t-small">web-layer 0,6–1,3k · be-logging 2,8k (tuỳ)</text>
+  <text x="348" y="172" class="t-tok">Σ ≈ 9–13k</text>
+
+  <rect x="656" y="66" width="310" height="118" rx="8" class="flow-box"></rect>
+  <text x="668" y="86" class="t-bold">Phase 1–2 — Load / Select scenario</text>
+  <text x="668" y="106" class="t-small">Read work document (đầy đủ: entity, command,</text>
+  <text x="668" y="122" class="t-small">query, endpoint, validation, scenarios)</text>
+  <text x="668" y="142" class="t-tok">~1,5–3k / document</text>
+  <text x="668" y="162" class="t-small">Batch: đọc lần lượt từng doc trong queue</text>
+  <line x1="636" y1="125" x2="656" y2="125" class="flow-line" marker-end="url(#arr)"></line>
+
+  <!-- TDD loop -->
+  <rect x="336" y="200" width="630" height="460" rx="10" class="flow-loop"></rect>
+  <text x="350" y="222" class="t-bold">Phase 3 — TDD cycle (lặp cho MỖI scenario)</text>
+  <line x1="811" y1="184" x2="811" y2="200" class="flow-line" marker-end="url(#arr)"></line>
+
+  <rect x="352" y="234" width="290" height="50" rx="8" class="flow-box"></rect>
+  <text x="364" y="254" class="t-norm">Snapshot file (cp -p) + Step 1 stub</text>
+  <text x="364" y="273" class="t-tok">~0,3k + Read source 1–2,5k</text>
+
+  <rect x="352" y="296" width="290" height="50" rx="8" class="flow-box"></rect>
+  <text x="364" y="316" class="t-norm">Step 2 — Write test (RED)</text>
+  <text x="364" y="335" class="t-tok">0,8–1,5k (output)</text>
+
+  <rect x="352" y="358" width="290" height="62" rx="8" class="flow-hot"></rect>
+  <text x="364" y="378" class="t-norm">Step 3 — Verify RED: rm xml → gradle → grep</text>
+  <text x="364" y="396" class="t-hot">fail là KỲ VỌNG → luôn trả 80 dòng×300 ký tự</text>
+  <text x="364" y="412" class="t-hot">1–3k (trần ~6,5k) mỗi scenario</text>
+
+  <rect x="352" y="432" width="290" height="50" rx="8" class="flow-box"></rect>
+  <text x="364" y="452" class="t-norm">Step 4 — Implement (GREEN)</text>
+  <text x="364" y="471" class="t-tok">0,5–1,2k (output)</text>
+
+  <rect x="352" y="494" width="290" height="62" rx="8" class="flow-box"></rect>
+  <text x="364" y="514" class="t-norm">Step 5 — Verify GREEN (cả class)</text>
+  <text x="364" y="532" class="t-tok">pass: ~0,6k (3 lượt)</text>
+  <text x="364" y="548" class="t-hot">fail: +3–7k/lần, tối đa 3 lần → revert</text>
+
+  <rect x="352" y="568" width="290" height="50" rx="8" class="flow-box"></rect>
+  <text x="364" y="588" class="t-norm">Step 6 — Mark [x] + report scenario</text>
+  <text x="364" y="607" class="t-tok">~0,4k</text>
+
+  <line x1="497" y1="284" x2="497" y2="296" class="flow-line" marker-end="url(#arr)"></line>
+  <line x1="497" y1="346" x2="497" y2="358" class="flow-line" marker-end="url(#arr)"></line>
+  <line x1="497" y1="420" x2="497" y2="432" class="flow-line" marker-end="url(#arr)"></line>
+  <line x1="497" y1="482" x2="497" y2="494" class="flow-line" marker-end="url(#arr)"></line>
+  <line x1="497" y1="556" x2="497" y2="568" class="flow-line" marker-end="url(#arr)"></line>
+
+  <!-- side notes -->
+  <rect x="664" y="234" width="290" height="96" rx="8" class="flow-hot"></rect>
+  <text x="676" y="254" class="t-norm">Sau MỖI lần chạy test:</text>
+  <text x="676" y="272" class="t-norm">Read + Write .progress/.lock (lockedAt)</text>
+  <text x="676" y="292" class="t-hot">+2 lượt × 2 lần chạy = ~4 lượt/scenario</text>
+  <text x="676" y="310" class="t-hot">≈ 25% số lượt — mỗi lượt đọc lại cả context</text>
+
+  <rect x="664" y="344" width="290" height="96" rx="8" class="flow-box"></rect>
+  <text x="676" y="364" class="t-norm">Nhánh “covered by scaffold”:</text>
+  <text x="676" y="382" class="t-small">test pass ngay ở RED (be-crud đã sinh code)</text>
+  <text x="676" y="400" class="t-small">→ ghi test làm regression pin, mark [x]</text>
+  <text x="676" y="420" class="t-tok">~3k / ~7 lượt</text>
+
+  <rect x="664" y="454" width="290" height="96" rx="8" class="flow-box"></rect>
+  <text x="676" y="474" class="t-bold">Happy path / scenario</text>
+  <text x="676" y="494" class="t-tok">Δcontext ≈ 6–10k (lấy 8k)</text>
+  <text x="676" y="512" class="t-tok">≈ 15 lượt tool</text>
+  <text x="676" y="532" class="t-small">output (code + reasoning) ≈ 2–4k</text>
+
+  <rect x="664" y="564" width="290" height="80" rx="8" class="flow-box"></rect>
+  <text x="676" y="584" class="t-bold">Phase 4 — Repeat</text>
+  <text x="676" y="602" class="t-small">còn [ ] → về Phase 2</text>
+  <text x="676" y="620" class="t-small">hết doc → doc kế trong queue (context GIỮ NGUYÊN)</text>
+  <path d="M642,593 L664,604" class="flow-line" marker-end="url(#arr)"></path>
+  <path d="M954,604 L975,604 L975,212 L966,212" class="flow-line" marker-end="url(#arr)"></path>
+
+  <rect x="336" y="676" width="630" height="58" rx="8" class="flow-box"></rect>
+  <text x="350" y="698" class="t-norm">Kết thúc: rm {logPath}, trả report cuối về be-code</text>
+  <text x="350" y="718" class="t-small">Chỉ message cuối quay về context chính — toàn bộ log/đọc file ở lại trong agent (đây là điểm mạnh của thiết kế subagent)</text>
+  <line x1="651" y1="660" x2="651" y2="676" class="flow-line" marker-end="url(#arr)"></line>
+</svg>
+</div>
+
+<h2>2. Chi phí token từng bước</h2>
+<p class="muted">Ước tính từ kích thước file thật (≈3,7 ký tự/token cho markdown, ≈3,5 cho Java) và file mẫu trong <code>examples/employee-service</code>. Phần system/tool schema của Claude Code là ước lượng, không đo được từ plugin. Đây là token <em>thêm vào context</em>; chi phí thật = context đó bị đọc lại ở mọi lượt sau (xem mục 3).</p>
+<div class="tbl-wrap">
+<table>
+  <thead><tr><th>Giai đoạn</th><th>Nội dung đưa vào context</th><th class="num">Token thêm</th><th class="num">Số lượt tool</th><th>Ghi chú</th></tr></thead>
+  <tbody>
+    <tr><td>Khởi động agent</td><td>System Claude Code + schema 6 tool + CLAUDE.md project + <code>implement.md</code> (14 KB) + prompt từ be-code</td><td class="num">~13k</td><td class="num">0</td><td>Cố định, cache được</td></tr>
+    <tr><td>Phase 0</td><td>core-conventions 1,3k · tdd-rules 2,1k · cqrs-module 1,3k · entity-conventions 0,8k · r2dbc 2,5k <em>hoặc</em> mybatis 3,4k · web-layer 0,6–1,3k · (be-logging 2,8k nếu viết filter log)</td><td class="num">9–13k</td><td class="num">6–7</td><td>Đã đọc có điều kiện — tốt</td></tr>
+    <tr><td>Phase 1</td><td>Đọc work document</td><td class="num">1,5–3k</td><td class="num">1</td><td>Mỗi document trong batch</td></tr>
+    <tr><td>Step 1 + snapshot</td><td>cp -p snapshot; Read handler/executor/test hiện có; tạo stub</td><td class="num">1,5–3k</td><td class="num">2–4</td><td>Scenario đầu đọc nhiều nhất; các scenario sau hay đọc lại file đã có trong context</td></tr>
+    <tr><td>Step 2 (RED)</td><td>Write/Edit test class</td><td class="num">0,8–1,5k</td><td class="num">1</td><td>Output token</td></tr>
+    <tr><td>Step 3 (verify RED)</td><td>rm xml · gradle → <code>exit=</code> · grep counts · grep failure (80 dòng × 300 ký tự)</td><td class="num">1,5–3,5k</td><td class="num">3–4</td><td><span class="tag t-high">điểm nóng</span> fail là đường kỳ vọng nên lần nào cũng tốn trần lớn</td></tr>
+    <tr><td>Lock refresh</td><td>Read + Write <code>.lock</code> sau mỗi lần chạy test</td><td class="num">~0,8k</td><td class="num">~4</td><td><span class="tag t-med">thừa</span> nhiều lượt, ít giá trị</td></tr>
+    <tr><td>Step 4 (GREEN)</td><td>Edit production code</td><td class="num">0,5–1,2k</td><td class="num">1–2</td><td>Output token</td></tr>
+    <tr><td>Step 5 (verify GREEN)</td><td>pass: counts · fail: +grep failure, tối đa 3 lần rồi revert</td><td class="num">0,6k / 3–20k</td><td class="num">3 / 9–15</td><td>Nhánh lỗi là đắt nhất</td></tr>
+    <tr><td>Step 6</td><td>Edit <code>- [x]</code> + report text</td><td class="num">~0,4k</td><td class="num">1</td><td></td></tr>
+    <tr><th>Tổng 1 scenario</th><th>happy path</th><th class="num">~8k</th><th class="num">~15</th><th>scaffold-covered: ~3k / 7 lượt</th></tr>
+    <tr><td>be-code Step 5</td><td><code>{buildCommand}</code> chạy thẳng, không theo protocol</td><td class="num">2–30k</td><td class="num">1</td><td><span class="tag t-med">rò rỉ</span> vào context chính</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>3. Vì sao chi phí tăng theo bình phương</h2>
+<p>Mỗi lượt tool, model đọc lại toàn bộ context hiện có. Với context ban đầu C₀ ≈ 25k và mỗi scenario thêm ~8k qua ~15 lượt, tổng input cho S scenario ≈ 15·S·C₀ + 15·8k·S²/2. Phần S² chiếm ưu thế khi S lớn. Prompt caching giúp phần lặp lại rẻ hơn khá nhiều, nhưng không đổi được hình dạng đường cong, và context cuối vẫn phải lọt cửa sổ.</p>
+<div class="card">
+<div class="legend">
+  <span><i class="sw" style="background: var(--bad)"></i>1 agent cho cả 3 document (thiết kế hiện tại)</span>
+  <span><i class="sw" style="background: var(--ok)"></i>3 agent, mỗi document một agent mới</span>
+  <span><i class="sw" style="background: var(--warn)"></i>Cửa sổ 200k</span>
+</div>
+<svg viewBox="0 0 660 300" role="img" aria-label="Kích thước context theo số lượt: batch so với tách theo document">
+  <line x1="60" y1="270" x2="630" y2="270" class="axis"></line>
+  <line x1="60" y1="30" x2="60" y2="270" class="axis"></line>
+  <line x1="60" y1="227.1" x2="630" y2="227.1" class="grid"></line>
+  <line x1="60" y1="184.3" x2="630" y2="184.3" class="grid"></line>
+  <line x1="60" y1="141.4" x2="630" y2="141.4" class="grid"></line>
+  <line x1="60" y1="55.7" x2="630" y2="55.7" class="grid"></line>
+  <line x1="60" y1="98.6" x2="630" y2="98.6" class="limit"></line>
+  <text x="52" y="274" text-anchor="end" class="t-small">0</text>
+  <text x="52" y="231" text-anchor="end" class="t-small">50k</text>
+  <text x="52" y="188" text-anchor="end" class="t-small">100k</text>
+  <text x="52" y="145" text-anchor="end" class="t-small">150k</text>
+  <text x="52" y="102" text-anchor="end" class="t-small">200k</text>
+  <text x="52" y="59" text-anchor="end" class="t-small">250k</text>
+  <text x="60" y="288" text-anchor="middle" class="t-small">0</text>
+  <text x="246.7" y="288" text-anchor="middle" class="t-small">150 (doc 1 xong)</text>
+  <text x="433.3" y="288" text-anchor="middle" class="t-small">300 (doc 2 xong)</text>
+  <text x="620" y="288" text-anchor="middle" class="t-small">450 lượt</text>
+  <text x="20" y="22" class="t-small">Kích thước context mỗi lượt (token)</text>
+  <polyline points="60,248.6 620,42.9" class="line-batch"></polyline>
+  <polyline points="60,248.6 246.7,180" class="line-doc"></polyline>
+  <polyline points="246.7,248.6 433.3,180" class="line-doc"></polyline>
+  <polyline points="433.3,248.6 620,180" class="line-doc"></polyline>
+  <text x="440" y="90" class="t-hot">≈ lượt 330: chạm 200k → auto-compact</text>
+  <text x="330" y="166" class="t-small">mỗi agent dừng ở ~105k</text>
+</svg>
+</div>
+<div class="tbl-wrap">
+<table>
+  <thead><tr><th>Kịch bản (ước tính)</th><th class="num">Số lượt</th><th class="num">Context cuối</th><th class="num">Tổng input xử lý</th><th>Rủi ro</th></tr></thead>
+  <tbody>
+    <tr><td>1 entity × 10 scenario</td><td class="num">~150</td><td class="num">~105k</td><td class="num">~9,8M</td><td><span class="tag t-ok">ổn</span></td></tr>
+    <tr><td>3 entity × 10, <strong>1 agent</strong> (hiện tại)</td><td class="num">~450</td><td class="num">~265k</td><td class="num">~65M</td><td><span class="tag t-high">compact</span> mất convention Phase 0 giữa document 3</td></tr>
+    <tr><td>3 entity × 10, <strong>3 agent tuần tự</strong></td><td class="num">~450</td><td class="num">~105k mỗi agent</td><td class="num">~29M (+3× Phase 0 ≈ 0,1M)</td><td><span class="tag t-ok">ổn</span></td></tr>
+    <tr><td>Hiệu ứng mang theo: 1k token thêm ở scenario 1/30</td><td class="num">—</td><td class="num">—</td><td class="num">bị đọc lại ~435 lần ≈ 0,43M</td><td>Vì vậy rút gọn output RED đáng giá hơn rút gọn prompt</td></tr>
+  </tbody>
+</table>
+</div>
+<p class="muted">Cách tính: lượt t có context ≈ 25k + t·533 token; tổng input = diện tích dưới đường. Số tuyệt đối có thể lệch ±40% tuỳ project, nhưng tỉ lệ ~2,2× và việc vượt cửa sổ khá chắc chắn vì chỉ phụ thuộc hình dạng đường.</p>
+
+<h2>4. Các phát hiện, theo mức độ nghiêm trọng</h2>
+
+<div class="card finding high">
+  <h3><span class="tag t-high">Cao</span> H1 · Gom nhiều work document vào 1 agent: tiết kiệm sai chỗ</h3>
+  <p><code>be-code/SKILL.md:201-206</code> và <code>agents/implement.md:16-22</code> chọn một agent cho cả batch để khỏi nạp lại Phase 0 (~10k). Cái giá là phải mang context của document trước sang mọi lượt của document sau: tổng input gấp ~2,2× với 3 entity, và context vượt 200k ở khoảng scenario thứ 22.</p>
+  <p><strong>Hậu quả về chất lượng:</strong> auto-compact tóm tắt cả các template Phase 0 (naming, R2DBC UUID converter, quy tắc <code>boundedElastic</code>…). Các entity cuối thường là entity phụ thuộc nhiều nhất trong <code>entityDependencyOrder</code>, nên lại được code khi convention đã bị nén.</p>
+  <p><strong>Đề xuất:</strong> be-code gọi <code>implement</code> tuần tự, <em>mỗi document một agent mới</em>, hoặc giới hạn mỗi batch khoảng ≤12 scenario. Phase 0 chỉ tốn ~10k mỗi lần, nhỏ hơn hai bậc so với phần tiết kiệm được. Nhớ sửa lại phần lý giải trong cả hai file.</p>
+</div>
+
+<div class="card finding high">
+  <h3><span class="tag t-high">Cao</span> H2 · Bản đang cài thiếu Test-Run Protocol vì không bump version</h3>
+  <p><code>cache/…/0.1.0/agents/implement.md</code> vẫn chạy <code>{testCommand} --tests …</code> và đưa nguyên output vào context. Một lần Gradle fail với <code>@SpringBootTest</code> dễ ra 5–30k token, lặp lại 2–4 lần mỗi scenario. Bản marketplace đã sửa, nhưng <code>plugin.json</code> vẫn là <code>0.1.0</code> nên cache không được làm mới.</p>
+  <p><strong>Đề xuất:</strong> bump version (ví dụ <code>0.2.0</code>) mỗi khi đổi agent hoặc skill; trong lúc chờ, cài lại plugin.</p>
+</div>
+
+<div class="card finding med">
+  <h3><span class="tag t-med">Trung bình</span> M1 · Refresh lock sau mỗi lần chạy test tốn ~25% số lượt</h3>
+  <p><code>implement.md:204</code> bắt đọc rồi ghi lại <code>.progress/.lock</code> sau mỗi lần chạy test, tức ~4 lượt mỗi scenario, mà lượt nào cũng đọc lại toàn bộ context. TTL của lock là 30 phút, trong khi một scenario hiếm khi kéo dài tới đó.</p>
+  <p><strong>Đề xuất:</strong> gộp vào cùng lệnh Bash chạy Gradle, ví dụ <code>…; echo "exit=$?"; [ -f lock ] &amp;&amp; jq '.lockedAt=now|todate' …</code>, hoặc đưa vào một script <code>scripts/touch-lock.sh</code> (đã kiểm tra <code>operation == "be-code"</code>). Như vậy không tốn thêm lượt nào.</p>
+</div>
+
+<div class="card finding med">
+  <h3><span class="tag t-med">Trung bình</span> M2 · Output khi RED fail dùng chung mức trần với lúc debug</h3>
+  <p>Ở Step 3 (<code>implement.md:115-116</code>), test fail là kết quả <em>mong đợi</em>, chỉ cần biết fail đúng assertion. Nhưng protocol vẫn trả tới 80 dòng × 300 ký tự (~6,5k), mà phần lớn là stack frame của framework. Vì xảy ra ở mọi scenario và bị mang theo đến cuối, đây là chỗ đáng tối ưu nhất trong vòng lặp.</p>
+  <p><strong>Đề xuất:</strong> chia hai mức: RED chỉ lấy <code>message</code> của <code>&lt;failure&gt;</code> (<code>grep -o 'message="[^"]*"' | head -n 5</code>); GREEN fail mới dùng mức 80 dòng như hiện tại.</p>
+</div>
+
+<div class="card finding med">
+  <h3><span class="tag t-med">Trung bình</span> M3 · “Follow naming conventions from CLAUDE.md exactly” không rõ là file nào</h3>
+  <p><code>implement.md:216</code>. CLAUDE.md của plugin (31 KB ≈ 8,5k token) không tự nạp vào subagent; CLAUDE.md của project thì là file khác. Model có thể đi đọc thêm 8,5k, hoặc theo nhầm convention của project.</p>
+  <p><strong>Đề xuất:</strong> trỏ thẳng tới <code>templates/core-conventions.md</code> (đã nạp ở Phase 0).</p>
+</div>
+
+<div class="card finding med">
+  <h3><span class="tag t-med">Trung bình</span> M4 · Ràng buộc mâu thuẫn khi gặp 3 lần fail</h3>
+  <p><code>implement.md:206</code> ghi “Request user review after 3 consecutive test failures”, nhưng subagent không hỏi user được; còn Step 5 (<code>:169-181</code>) ghi revert rồi STOP. Model có thể dừng giữa chừng để “hỏi” mà chưa revert, để lại test đang fail và chặn mọi scenario sau.</p>
+  <p><strong>Đề xuất:</strong> sửa thành “revert theo Step 5, rồi trả về cho skill gọi kèm lý do”; việc hỏi user để <code>be-code</code> (Error Handling) lo.</p>
+</div>
+
+<div class="card finding low">
+  <h3><span class="tag t-low">Thấp</span> L1 · Hướng dẫn snapshot/revert quá dày</h3>
+  <p><code>implement.md:170-178</code> nhồi cả <code>mktemp</code>, marker, <code>runId</code>, ghi <code>snapshotDir</code> vào lock, file absent, dọn thư mục… vào một đoạn văn. Đoạn này tốn token prompt ở mọi lượt, và model dễ làm sai thứ tự.</p>
+  <p><strong>Đề xuất:</strong> đưa thành <code>scripts/snapshot.sh save|restore|clear &lt;scenario&gt; &lt;files…&gt;</code>; prompt chỉ cần 2 dòng. Ít lượt hơn, và hành vi xác định.</p>
+</div>
+
+<div class="card finding low">
+  <h3><span class="tag t-low">Thấp</span> L2 · Đọc lại file đã có trong context</h3>
+  <p>Không có quy tắc nào cấm đọc lại handler/test class mỗi scenario. Mỗi lần đọc lại ~1–1,5k token, cộng dồn theo bình phương.</p>
+  <p><strong>Đề xuất:</strong> thêm rule “chỉ Read lại file khi Edit báo không khớp; dùng Grep có <code>-n</code> để tìm vị trí cần sửa”.</p>
+</div>
+
+<div class="card finding low">
+  <h3><span class="tag t-low">Thấp</span> L3 · Model <code>opus</code> cho vòng lặp cơ học, và build cuối không lọc log</h3>
+  <p>Phần lớn lượt trong vòng TDD là thao tác cơ học (rm, chạy, grep, mark). Nên đo thử <code>model: sonnet</code> trên <code>examples/employee-service</code> rồi so tỉ lệ pass trước khi đổi. Ngoài ra, <code>be-code</code> Step 5 chạy <code>{buildCommand}</code> thẳng vào <em>context chính</em> mà không theo protocol; nên áp cùng cách ghi log ra file rồi grep.</p>
+</div>
+
+<h3>Điểm làm tốt, nên giữ</h3>
+<ul>
+  <li><span class="tag t-ok">tốt</span> Subagent isolation: chỉ truyền tham số, không truyền lịch sử hội thoại; log và nội dung file đọc được ở lại trong agent.</li>
+  <li><span class="tag t-ok">tốt</span> Phase 0 đọc có điều kiện theo <code>dataProfile</code>, <code>webLayer</code>, <code>architecture</code>; <code>core-conventions.md</code> là bản rút gọn 4,7 KB thay cho CLAUDE.md 31 KB.</li>
+  <li><span class="tag t-ok">tốt</span> Test-Run Protocol (bản mới): exit code lấy từ Gradle, đọc từ JUnit XML, xoá XML cũ trước khi chạy, không bao giờ <code>cat</code> cả log.</li>
+  <li><span class="tag t-ok">tốt</span> Nhánh “covered by scaffold” tránh việc stub code ra chỉ để ép test fail.</li>
+  <li><span class="tag t-ok">tốt</span> be-code lấy danh sách file từ <code>git status</code> so với baseline, không dựa vào lời agent tự báo.</li>
+</ul>
+
+<h2>5. Thứ tự sửa đề xuất</h2>
+<div class="tbl-wrap">
+<table>
+  <thead><tr><th>#</th><th>Việc</th><th>File</th><th class="num">Tiết kiệm ước tính</th><th>Công sức</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>Bump version để Test-Run Protocol tới tay người dùng (H2)</td><td><code>.claude-plugin/plugin.json</code></td><td class="num">5–30k mỗi lần chạy test</td><td>5 phút</td></tr>
+    <tr><td>2</td><td>Mỗi document một agent, hoặc batch ≤12 scenario (H1)</td><td><code>be-code/SKILL.md</code> Step 4, <code>implement.md</code> Input</td><td class="num">~55% input khi ≥3 entity</td><td>Nhỏ</td></tr>
+    <tr><td>3</td><td>Gộp lock refresh vào lệnh Gradle (M1)</td><td><code>implement.md:204</code> + script</td><td class="num">~25% số lượt</td><td>Nhỏ</td></tr>
+    <tr><td>4</td><td>Chia output RED/GREEN thành hai mức (M2)</td><td><code>implement.md:110-122</code></td><td class="num">1–3k/scenario, cộng dồn</td><td>Nhỏ</td></tr>
+    <tr><td>5</td><td>Sửa M3, M4 (câu chữ)</td><td><code>implement.md:206,216</code></td><td class="num">tránh 8,5k + tránh kẹt</td><td>5 phút</td></tr>
+    <tr><td>6</td><td>Script snapshot, rule không đọc lại file, lọc log build cuối (L1–L3)</td><td><code>scripts/</code>, <code>be-code</code> Step 5</td><td class="num">vừa</td><td>Vừa</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>6. Vì sao lần nào cũng chạy hơn 30 phút (đo thực tế)</h2>
+<p>Đo trên transcript của 7 lần chạy agent <code>implement</code> trong các repo oh-api (25/09 – 02/10/2026), lấy timestamp của từng tool call. Thời gian tỉ lệ theo <strong>số scenario</strong>, không theo lượng code: mỗi scenario tốn khoảng 1,1–1,6 phút cố định.</p>
+<div class="tbl-wrap">
+<table>
+  <thead><tr><th>Lần chạy</th><th class="num">Scenario</th><th class="num">Dòng code ghi</th><th class="num">Thời gian</th><th class="num">Số lần chạy test</th><th class="num">Trung vị / lần test</th></tr></thead>
+  <tbody>
+    <tr><td>ELS-3541 (oh-api-mcp)</td><td class="num">9</td><td class="num">178</td><td class="num">19,6 phút</td><td class="num">20</td><td class="num">29 giây</td></tr>
+    <tr><td>agoda test endpoint (worker)</td><td class="num">15</td><td class="num">616</td><td class="num">21,8 phút</td><td class="num">39</td><td class="num">10 giây</td></tr>
+    <tr><td>ELS-3675 (master)</td><td class="num">19</td><td class="num">1.178</td><td class="num">36,6 phút</td><td class="num">43</td><td class="num">26 giây</td></tr>
+    <tr><td>ELS-3674 (master)</td><td class="num">29</td><td class="num">1.419</td><td class="num">47,3 phút</td><td class="num">53</td><td class="num">30 giây</td></tr>
+    <tr><td>mcp-seller-invoices (employee)</td><td class="num">36</td><td class="num">860</td><td class="num">35,1 phút</td><td class="num">80</td><td class="num">11 giây</td></tr>
+    <tr><td>mcp-seller-invoices, lần 2</td><td class="num">39</td><td class="num">1.663</td><td class="num">40,3 phút</td><td class="num">—</td><td class="num">—</td></tr>
+    <tr><td>không có work document</td><td class="num">0</td><td class="num">201</td><td class="num">4,7 phút</td><td class="num">3</td><td class="num">9 giây</td></tr>
+  </tbody>
+</table>
+</div>
+<ul>
+  <li><strong>Gradle chiếm 45–60%:</strong> mỗi scenario chạy test ít nhất 2 lần (RED và GREEN), mỗi lần có mức sàn cố định khoảng 25–30 giây ở <code>oh-api-master</code>, khoảng 10 giây ở <code>employee</code>/<code>worker</code>, bất kể sửa bao nhiêu dòng.</li>
+  <li><strong>Model suy nghĩ chiếm 30–40%:</strong> 13–17 phút mỗi lần chạy dài, trung vị 5–7 giây mỗi lượt.</li>
+  <li><strong>Scenario "covered" vẫn trả đủ giá:</strong> ELS-3674 có 12/29 scenario được đánh dấu "covered", nhưng mỗi cái vẫn tốn một lần test khoảng 30 giây.</li>
+  <li><strong>Số scenario không bám theo độ lớn task:</strong> mỗi input không hợp lệ thành một dòng riêng, tức một chu kỳ Gradle riêng.</li>
+  <li><strong>Không phải do timeout hay lock:</strong> lệnh lâu nhất là 5 phút 14 giây, không lệnh nào chạm timeout 600 giây.</li>
+</ul>
+
+<h2>7. Đã sửa (nhánh <code>backend/implement-scenario-batching</code>, chưa commit)</h2>
+<div class="tbl-wrap">
+<table>
+  <thead><tr><th>Thay đổi</th><th>File</th><th>Tác dụng mong đợi</th></tr></thead>
+  <tbody>
+    <tr><td>Quy tắc <em>Scenario Grouping</em>: input chỉ khác giá trị, cùng status, cùng rule thì gộp thành 1 dòng <code>— cases:</code>, tương ứng 1 <code>@ParameterizedTest</code> (tối đa 8 case)</td><td><code>templates/tdd-rules.md</code> (gốc), <code>CLAUDE.md</code>, <code>be-code</code> Step 3, <code>backend-planner</code> 2.7, <code>be-crud</code> §9, 2 template</td><td>Giảm khoảng 30–50% số scenario</td></tr>
+    <tr><td>Agent tự gộp các dòng liền kề đủ điều kiện, áp dụng cho work document cũ</td><td><code>agents/implement.md</code> Phase 2</td><td>Có tác dụng ngay với các work document đang có</td></tr>
+    <tr><td>Phase 1.5 <em>Covered-Scenario Sweep</em>: pin các scenario code đã đáp ứng, chạy test 1 lần mỗi test class; test nào fail thì gỡ ra và đưa về TDD</td><td><code>agents/implement.md</code></td><td>N lần chạy test thành 1 lần</td></tr>
+    <tr><td>Refresh lock nằm trong cùng lệnh Bash với Gradle (sed tại chỗ, kèm <code>; true</code>)</td><td><code>agents/implement.md</code></td><td>Bớt khoảng 4 lượt model mỗi scenario</td></tr>
+  </tbody>
+</table>
+</div>
+<p class="muted">Ước tính cho ELS-3674: khoảng 47 phút xuống còn 15–20 phút. Cần xác nhận bằng một lần chạy thật.</p>
+
+<footer>
+  Phương pháp: đọc tĩnh <code>agents/implement.md</code>, <code>skills/be-code/SKILL.md</code>, <code>templates/*</code>, <code>hooks/hooks.json</code>, <code>scripts/validate-build-state.sh</code> và file mẫu trong <code>examples/</code>; token quy đổi theo số ký tự. Chưa đo bằng một lần chạy thật. Muốn có số chính xác, chạy <code>be-code</code> trên <code>examples/employee-service</code> rồi đọc usage trong transcript của subagent.
+</footer>
+</main>
+</body>
+</html>

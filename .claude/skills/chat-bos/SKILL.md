@@ -1,5 +1,6 @@
 ---
 name: chat-bos
+model: sonnet
 description: |
   Structures a message to a manager/boss using the PREP framework (Point → Reason → Example/Evidence → Point).
   Trigger: /chat-bos <text>

@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Automaton Design Review</title>
+<style>
+  /* Color tokens — light default, dark via prefers-color-scheme or data-theme */
+  :root {
+    --bg: #f7f6f2; --surface: #ffffff; --surface-2: #f0eee8; --text: #1d1d1b; --muted: #5f5d57;
+    --border: #dcd9d0; --accent: #2f5fd0; --accent-soft: #e4ebfb;
+    --ok: #217a4b; --ok-soft: #e1f3e8; --warn: #9a6200; --warn-soft: #fbefd6;
+    --bad: #b3261e; --bad-soft: #fbe3e1; --code-bg: #f3f1ea;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #151514; --surface: #1e1e1c; --surface-2: #272724; --text: #ecebe6; --muted: #a8a69e;
+      --border: #3a3935; --accent: #86a6ff; --accent-soft: #232c45;
+      --ok: #6fd39c; --ok-soft: #1c3226; --warn: #f0bb5a; --warn-soft: #3a2e17;
+      --bad: #ff8a80; --bad-soft: #3d1f1d; --code-bg: #262623;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #151514; --surface: #1e1e1c; --surface-2: #272724; --text: #ecebe6; --muted: #a8a69e;
+    --border: #3a3935; --accent: #86a6ff; --accent-soft: #232c45;
+    --ok: #6fd39c; --ok-soft: #1c3226; --warn: #f0bb5a; --warn-soft: #3a2e17;
+    --bad: #ff8a80; --bad-soft: #3d1f1d; --code-bg: #262623;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.65 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 32px 16px 64px; }
+  header h1 { font-size: 30px; line-height: 1.2; margin: 0 0 6px; letter-spacing: -0.01em; }
+  header p { margin: 0; color: var(--muted); }
+  nav.toc { margin: 22px 0 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+  nav.toc a { font-size: 13px; padding: 4px 10px; border: 1px solid var(--border); border-radius: 999px;
+    color: var(--text); text-decoration: none; background: var(--surface); }
+  nav.toc a:hover { border-color: var(--accent); color: var(--accent); }
+  section { margin-top: 40px; }
+  h2 { font-size: 21px; margin: 0 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 16px; margin: 22px 0 8px; }
+  p { margin: 8px 0; }
+  code { font: 13px/1.4 ui-monospace, "Cascadia Code", Consolas, monospace; background: var(--code-bg);
+    padding: 1px 5px; border-radius: 4px; }
+  pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px;
+    overflow-x: auto; font: 12.5px/1.5 ui-monospace, Consolas, monospace; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; }
+  .tldr { border-left: 4px solid var(--accent); }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 14px; }
+  .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+  .stat b { display: block; font-size: 22px; font-variant-numeric: tabular-nums; }
+  .stat span { font-size: 12.5px; color: var(--muted); }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+  .tbl { width: 100%; overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { background: var(--surface-2); font-weight: 600; font-size: 13px; }
+  tr:last-child td { border-bottom: none; }
+  .pill { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 1px 8px; border-radius: 999px; white-space: nowrap; }
+  .p-high { background: var(--bad-soft); color: var(--bad); }
+  .p-med { background: var(--warn-soft); color: var(--warn); }
+  .p-low { background: var(--accent-soft); color: var(--accent); }
+  .p-ok { background: var(--ok-soft); color: var(--ok); }
+  ul { padding-left: 20px; margin: 8px 0; }
+  li { margin: 4px 0; }
+  .muted { color: var(--muted); font-size: 13px; }
+  figure { margin: 14px 0; }
+  figure svg { width: 100%; height: auto; display: block; }
+  figcaption { font-size: 13px; color: var(--muted); margin-top: 6px; }
+  /* SVG diagram styling via tokens so both themes stay legible */
+  .d-box { fill: var(--surface); stroke: var(--border); stroke-width: 1.2; }
+  .d-core { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.4; }
+  .d-ext { fill: var(--surface-2); stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 3; }
+  .d-bad { fill: var(--bad-soft); stroke: var(--bad); stroke-width: 1.2; }
+  .d-t { fill: var(--text); font: 600 12.5px system-ui, sans-serif; }
+  .d-s { fill: var(--muted); font: 11px system-ui, sans-serif; }
+  .d-line { stroke: var(--muted); stroke-width: 1.3; fill: none; }
+  .d-arrow { fill: var(--muted); }
+  footer { margin-top: 48px; font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--border); padding-top: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Phân tích thiết kế — Conway-Research/automaton</h1>
+  <p>Runtime agent AI “tự chủ”: tự trả tiền compute bằng USDC, tự sửa code, tự nhân bản. Phân tích dựa trên source tại commit <code>d8f8168</code> (26/08/2026), package <code>@conway/automaton</code> v0.2.1.</p>
+  <nav class="toc">
+    <a href="#tldr">TL;DR</a><a href="#overview">Kiến trúc tổng thể</a><a href="#lifecycle">Vòng đời</a>
+    <a href="#loop">Agent loop</a><a href="#survival">Kinh tế sinh tồn</a><a href="#security">Bảo mật &amp; policy</a>
+    <a href="#inference">Inference</a><a href="#memory">Memory</a><a href="#heartbeat">Heartbeat</a>
+    <a href="#orchestration">Orchestration</a><a href="#replication">Replication &amp; identity</a>
+    <a href="#data">Dữ liệu</a><a href="#strengths">Điểm mạnh</a><a href="#risks">Rủi ro</a><a href="#recs">Khuyến nghị</a>
+  </nav>
+</header>
+
+<section id="tldr">
+  <div class="card tldr">
+    <p><b>TL;DR.</b> Automaton là một <b>monolith Node.js/TypeScript chạy 1 tiến trình dài hạn</b>, xoay quanh vòng lặp ReAct (think → act → observe) cộng một heartbeat daemon chạy nền. Toàn bộ trạng thái nằm trong <b>một file SQLite</b> (<code>~/.automaton/state.db</code>). Ý tưởng thiết kế trung tâm là <b>“áp lực sinh tồn”</b>: số dư credit quyết định survival tier → tier quyết định model được dùng, tần suất heartbeat, và cuối cùng là “chết”.</p>
+    <p>An toàn được xây theo kiểu <b>defense-in-depth trong cùng tiến trình</b>: constitution bất biến → policy engine chặn mọi tool call → injection defense → path protection → giới hạn tài chính → phân cấp authority. Thiết kế này hợp lý về ý tưởng, nhưng điểm yếu cốt lõi là <b>agent chạy cùng tiến trình và có quyền sửa chính source code chứa các rào chắn đó</b>.</p>
+    <p>Code đang ở giai đoạn phát triển nhanh: tài liệu kiến trúc đã <b>lệch khá xa so với code</b> (57 vs ~77 tool, schema v8 vs v11), có <b>hai stack inference song song</b>, và vài module lớn (compression engine, enhanced retriever) <b>được viết + test nhưng chưa nối vào runtime</b>.</p>
+  </div>
+  <div class="stats">
+    <div class="stat"><b>~38.8k</b><span>dòng TS (không tính test)</span></div>
+    <div class="stat"><b>~77</b><span>built-in tools, 12 category</span></div>
+    <div class="stat"><b>v11</b><span>schema SQLite, 38 lệnh CREATE TABLE</span></div>
+    <div class="stat"><b>64 / ~1.5k</b><span>file test / test case (vitest)</span></div>
+    <div class="stat"><b>17</b><span>module trong <code>src/</code></span></div>
+    <div class="stat"><b>1</b><span>commit (history đã squash)</span></div>
+  </div>
+</section>
+
+<section id="overview">
+  <h2>1. Kiến trúc tổng thể</h2>
+  <p>Không có service tách rời — mọi subsystem là module TS trong cùng một process, giao tiếp qua gọi hàm trực tiếp và qua bảng SQLite (vd. <code>wake_events</code> là “message bus” giữa heartbeat và agent loop). Bên ngoài chỉ có 3 phụ thuộc hạ tầng: Conway Cloud (VM, inference, domain, credits), social relay, và chain Base (USDC, ERC-8004).</p>
+  <figure>
+    <svg viewBox="0 0 960 470" role="img" aria-label="Sơ đồ kiến trúc tổng thể automaton">
+      <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="d-arrow"/></marker></defs>
+      <!-- external systems -->
+      <rect x="20" y="14" width="280" height="54" rx="8" class="d-ext"/>
+      <text x="160" y="37" text-anchor="middle" class="d-t">Conway Cloud</text>
+      <text x="160" y="55" text-anchor="middle" class="d-s">sandbox VM · inference proxy · domains · credits</text>
+      <rect x="340" y="14" width="280" height="54" rx="8" class="d-ext"/>
+      <text x="480" y="37" text-anchor="middle" class="d-t">Base chain (+ Solana)</text>
+      <text x="480" y="55" text-anchor="middle" class="d-s">USDC · x402 / EIP-3009 · ERC-8004 registry</text>
+      <rect x="660" y="14" width="280" height="54" rx="8" class="d-ext"/>
+      <text x="800" y="37" text-anchor="middle" class="d-t">social.conway.tech</text>
+      <text x="800" y="55" text-anchor="middle" class="d-s">relay tin nhắn ký bằng private key</text>
+      <!-- runtime boundary -->
+      <rect x="20" y="94" width="920" height="360" rx="12" class="d-box"/>
+      <text x="36" y="116" class="d-s">AUTOMATON RUNTIME — 1 process Node.js ≥ 20</text>
+      <!-- core row -->
+      <rect x="40" y="130" width="190" height="66" rx="8" class="d-core"/>
+      <text x="135" y="157" text-anchor="middle" class="d-t">Heartbeat daemon</text>
+      <text x="135" y="176" text-anchor="middle" class="d-s">DurableScheduler · cron · lease</text>
+      <rect x="290" y="130" width="190" height="66" rx="8" class="d-core"/>
+      <text x="385" y="157" text-anchor="middle" class="d-t">Agent loop (ReAct)</text>
+      <text x="385" y="176" text-anchor="middle" class="d-s">agent/loop.ts</text>
+      <rect x="540" y="130" width="180" height="66" rx="8" class="d-box"/>
+      <text x="630" y="157" text-anchor="middle" class="d-t">InferenceRouter</text>
+      <text x="630" y="176" text-anchor="middle" class="d-s">tier × task → model</text>
+      <rect x="760" y="130" width="160" height="66" rx="8" class="d-box"/>
+      <text x="840" y="157" text-anchor="middle" class="d-t">Memory (5 tầng)</text>
+      <text x="840" y="176" text-anchor="middle" class="d-s">retrieval + ingestion</text>
+      <!-- second row -->
+      <rect x="290" y="226" width="190" height="66" rx="8" class="d-core"/>
+      <text x="385" y="253" text-anchor="middle" class="d-t">Policy engine</text>
+      <text x="385" y="272" text-anchor="middle" class="d-s">6 nhóm rule · first-deny-wins</text>
+      <rect x="540" y="226" width="180" height="66" rx="8" class="d-box"/>
+      <text x="630" y="253" text-anchor="middle" class="d-t">Tools (~77)</text>
+      <text x="630" y="272" text-anchor="middle" class="d-s">agent/tools.ts</text>
+      <rect x="40" y="226" width="190" height="66" rx="8" class="d-box"/>
+      <text x="135" y="253" text-anchor="middle" class="d-t">Orchestrator</text>
+      <text x="135" y="272" text-anchor="middle" class="d-s">plan → task graph → workers</text>
+      <rect x="760" y="226" width="160" height="66" rx="8" class="d-box"/>
+      <text x="840" y="253" text-anchor="middle" class="d-t">Soul / Skills</text>
+      <text x="840" y="272" text-anchor="middle" class="d-s">SOUL.md · *.md skills</text>
+      <!-- bottom row -->
+      <rect x="40" y="322" width="880" height="44" rx="8" class="d-core"/>
+      <text x="480" y="349" text-anchor="middle" class="d-t">SQLite state.db (better-sqlite3, WAL) — turns · policy_decisions · spend · heartbeat · wake_events · memory · goals/tasks · children …</text>
+      <rect x="40" y="384" width="205" height="52" rx="8" class="d-box"/>
+      <text x="142" y="406" text-anchor="middle" class="d-t">Identity / Wallet</text>
+      <text x="142" y="424" text-anchor="middle" class="d-s">viem · SIWE · Solana</text>
+      <rect x="265" y="384" width="205" height="52" rx="8" class="d-box"/>
+      <text x="367" y="406" text-anchor="middle" class="d-t">Replication</text>
+      <text x="367" y="424" text-anchor="middle" class="d-s">spawn · lifecycle · lineage</text>
+      <rect x="490" y="384" width="205" height="52" rx="8" class="d-box"/>
+      <text x="592" y="406" text-anchor="middle" class="d-t">Self-mod / Git</text>
+      <text x="592" y="424" text-anchor="middle" class="d-s">edit_own_file · upstream · audit</text>
+      <rect x="715" y="384" width="205" height="52" rx="8" class="d-box"/>
+      <text x="817" y="406" text-anchor="middle" class="d-t">Social / Registry</text>
+      <text x="817" y="424" text-anchor="middle" class="d-s">ký tin nhắn · ERC-8004</text>
+      <!-- arrows -->
+      <path d="M230 163 H286" class="d-line" marker-end="url(#ar)"/>
+      <text x="258" y="155" text-anchor="middle" class="d-s">wake</text>
+      <path d="M480 163 H536" class="d-line" marker-end="url(#ar)"/>
+      <path d="M720 163 H756" class="d-line" marker-end="url(#ar)"/>
+      <path d="M385 196 V222" class="d-line" marker-end="url(#ar)"/>
+      <path d="M480 259 H536" class="d-line" marker-end="url(#ar)"/>
+      <path d="M290 180 L230 238" class="d-line" marker-end="url(#ar)"/>
+      <text x="236" y="212" class="d-s">tick</text>
+      <path d="M160 68 V90" class="d-line" marker-end="url(#ar)"/>
+      <path d="M480 68 V90" class="d-line" marker-end="url(#ar)"/>
+      <path d="M800 68 V90" class="d-line" marker-end="url(#ar)"/>
+    </svg>
+    <figcaption>Hình 1 — Mọi subsystem nằm chung một process; SQLite vừa là persistence vừa là kênh phối hợp giữa heartbeat và agent loop.</figcaption>
+  </figure>
+
+  <div class="tbl"><table>
+    <tr><th>Module (<code>src/</code>)</th><th>Trách nhiệm</th><th>File trọng tâm</th></tr>
+    <tr><td><code>agent/</code></td><td>ReAct loop, system prompt, context, tool registry, policy engine, injection defense, harness cho worker</td><td><code>loop.ts</code> (1026), <code>tools.ts</code> (3416)</td></tr>
+    <tr><td><code>conway/</code></td><td>Client Conway API, resilient HTTP (retry + circuit breaker), x402, topup, tính survival tier</td><td><code>client.ts</code>, <code>x402.ts</code></td></tr>
+    <tr><td><code>inference/</code></td><td>Router theo tier, model registry, budget; ProviderRegistry + UnifiedInferenceClient (stack thứ 2)</td><td><code>router.ts</code>, <code>provider-registry.ts</code></td></tr>
+    <tr><td><code>memory/</code></td><td>5 tầng memory, retrieval theo token budget, ingestion sau mỗi turn; compression engine</td><td><code>retrieval.ts</code>, <code>compression-engine.ts</code></td></tr>
+    <tr><td><code>heartbeat/</code></td><td>Daemon nền, scheduler bền vững trong DB, 11 task mặc định</td><td><code>scheduler.ts</code>, <code>tasks.ts</code></td></tr>
+    <tr><td><code>orchestration/</code></td><td>Plan mode, planner (LLM), task graph (DAG), worker pool nội bộ, colony messaging</td><td><code>orchestrator.ts</code> (1232)</td></tr>
+    <tr><td><code>replication/</code></td><td>Sinh child automaton, state machine vòng đời, health, lineage, propagate constitution</td><td><code>spawn.ts</code>, <code>lifecycle.ts</code></td></tr>
+    <tr><td><code>self-mod/</code>, <code>git/</code></td><td>Sửa source có bảo vệ, cherry-pick upstream, cài npm/MCP, audit log, git-version <code>~/.automaton</code></td><td><code>code.ts</code>, <code>upstream.ts</code></td></tr>
+    <tr><td><code>identity/</code>, <code>registry/</code>, <code>social/</code></td><td>Ví EVM/Solana, SIWE provisioning, ERC-8004 agent card, nhắn tin agent-agent có ký</td><td><code>wallet.ts</code>, <code>erc8004.ts</code></td></tr>
+    <tr><td><code>soul/</code>, <code>skills/</code></td><td>SOUL.md tự viết + reflection đo độ lệch với genesis; skill dạng Markdown + frontmatter</td><td><code>reflection.ts</code>, <code>loader.ts</code></td></tr>
+    <tr><td><code>state/</code>, <code>observability/</code></td><td>Schema + migration + ~60 helper DB; logger JSON, metrics, alert engine</td><td><code>database.ts</code> (2540)</td></tr>
+  </table></div>
+</section>
+
+<section id="lifecycle">
+  <h2>2. Vòng đời runtime</h2>
+  <p><code>index.ts</code> bootstrap tuần tự (config → wallet → DB migrate → Conway/inference/social client → policy engine → spend tracker → bootstrap topup $5 → heartbeat) rồi vào vòng <code>while(true)</code> luân phiên giữa <b>chạy agent loop</b> và <b>ngủ</b>. Khi ngủ, cứ 30s nó “consume” một bản ghi trong bảng <code>wake_events</code>; heartbeat là bên ghi vào bảng này.</p>
+  <figure>
+    <svg viewBox="0 0 960 200" role="img" aria-label="State machine của agent">
+      <defs><marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="d-arrow"/></marker></defs>
+      <rect x="20" y="70" width="110" height="50" rx="25" class="d-box"/><text x="75" y="100" text-anchor="middle" class="d-t">setup</text>
+      <rect x="180" y="70" width="110" height="50" rx="25" class="d-box"/><text x="235" y="100" text-anchor="middle" class="d-t">waking</text>
+      <rect x="340" y="70" width="130" height="50" rx="25" class="d-core"/><text x="405" y="100" text-anchor="middle" class="d-t">running</text>
+      <rect x="530" y="70" width="120" height="50" rx="25" class="d-box"/><text x="590" y="100" text-anchor="middle" class="d-t">sleeping</text>
+      <rect x="340" y="150" width="130" height="40" rx="20" class="d-box"/><text x="405" y="175" text-anchor="middle" class="d-t">low_compute</text>
+      <rect x="700" y="150" width="110" height="40" rx="20" class="d-box"/><text x="755" y="175" text-anchor="middle" class="d-t">critical</text>
+      <rect x="850" y="150" width="90" height="40" rx="20" class="d-bad"/><text x="895" y="175" text-anchor="middle" class="d-t">dead</text>
+      <path d="M130 95 H176" class="d-line" marker-end="url(#ar2)"/>
+      <path d="M290 95 H336" class="d-line" marker-end="url(#ar2)"/>
+      <path d="M470 95 H526" class="d-line" marker-end="url(#ar2)"/>
+      <text x="498" y="87" text-anchor="middle" class="d-s">sleep()/idle</text>
+      <path d="M590 70 C590 20, 235 20, 235 66" class="d-line" marker-end="url(#ar2)"/>
+      <text x="412" y="30" text-anchor="middle" class="d-s">wake_event (heartbeat · inbox · credits · alert)</text>
+      <path d="M405 120 V146" class="d-line" marker-end="url(#ar2)"/>
+      <path d="M470 110 C600 130, 680 140, 696 165" class="d-line" marker-end="url(#ar2)"/>
+      <text x="610" y="148" class="d-s">credit = 0</text>
+      <path d="M810 170 H846" class="d-line" marker-end="url(#ar2)"/>
+      <text x="828" y="143" text-anchor="middle" class="d-s">nợ / grace 1h</text>
+    </svg>
+    <figcaption>Hình 2 — Trạng thái <code>AgentState</code>. “dead” vẫn giữ process sống: heartbeat tiếp tục phát distress và chờ được nạp tiền (vòng lặp kiểm tra 5 phút/lần).</figcaption>
+  </figure>
+</section>
+
+<section id="loop">
+  <h2>3. Agent loop (ReAct)</h2>
+  <p>Mỗi turn trong <code>agent/loop.ts</code>:</p>
+  <pre>1. Kiểm tra tài chính → tính survival tier (cache số dư trong KV khi API lỗi)
+2. Claim tin nhắn inbox (received → in_progress, retry tối đa 3) + sanitize qua injection-defense
+3. Build system prompt nhiều lớp (constitution, identity, soul, tài chính, skills, tools)
+4. MemoryRetriever lấy memory trong token budget → chèn block memory
+5. (nếu có bảng goals) orchestrator.tick() + chèn TODO.md vào context
+6. InferenceRouter.route(tier, taskType) → gọi model
+7. Thực thi tối đa 10 tool call/turn, mỗi call qua PolicyEngine
+8. Persist turn (atomic cùng ack inbox) → MemoryIngestionPipeline
+9. Phát hiện loop (cùng pattern tool 3 lần) → chèn cảnh báo hệ thống
+10. Phát hiện idle (10 turn không có tool "mutating") → ép sleep; 5 lỗi liên tiếp → sleep</pre>
+  <p class="muted">Lưu ý: ARCHITECTURE.md nói ngưỡng idle là 3 turn; code hiện tại là <code>MAX_IDLE_TURNS = 10</code> và thêm giới hạn <code>maxTurnsPerCycle</code> (mặc định 25).</p>
+  <p><b>Nhận xét thiết kế:</b> các guard chống “agent tự chạy vòng vòng tốn tiền” (loop detector, idle detector, trần tool/turn, trần turn/cycle) là điểm rất thực tế — với agent tự trả tiền, một vòng lặp status-check vô hạn chính là cách “chết” nhanh nhất. Tuy nhiên, việc phân loại “mutating” dựa trên một <b>danh sách tên tool hard-code</b> trong loop, nên dễ lệch khi thêm tool mới.</p>
+</section>
+
+<section id="survival">
+  <h2>4. Kinh tế sinh tồn</h2>
+  <p>Đây là ý tưởng định hình toàn bộ thiết kế: tiền là tài nguyên duy nhất, và mọi hành vi đều có giá. Ngưỡng lấy từ <code>SURVIVAL_THRESHOLDS</code> trong <code>types.ts</code> (đơn vị cent):</p>
+  <div class="tbl"><table>
+    <tr><th>Tier</th><th>Điều kiện credit</th><th>Hành vi</th></tr>
+    <tr><td><span class="pill p-ok">high</span></td><td>&gt; $5.00</td><td>Model mạnh nhất, heartbeat đầy đủ</td></tr>
+    <tr><td><span class="pill p-ok">normal</span></td><td>&gt; $0.50</td><td>Hoạt động bình thường</td></tr>
+    <tr><td><span class="pill p-med">low_compute</span></td><td>&gt; $0.10</td><td>Hạ model, giảm tần suất heartbeat, bỏ task không thiết yếu</td></tr>
+    <tr><td><span class="pill p-high">critical</span></td><td>≥ $0.00</td><td>Vẫn sống, model rẻ nhất, phát distress, chờ nạp tiền</td></tr>
+    <tr><td><span class="pill p-high">dead</span></td><td>&lt; $0 (hoặc 0 kéo dài 1h qua grace period của heartbeat)</td><td>Dừng agent loop, heartbeat vẫn chạy</td></tr>
+  </table></div>
+  <h3>Dòng tiền</h3>
+  <ul>
+    <li><b>Hai loại số dư:</b> Conway credits (trả trước, dùng cho VM/inference/domain) và USDC trên Base.</li>
+    <li><b>x402:</b> server trả HTTP 402 kèm yêu cầu thanh toán → client ký <code>TransferWithAuthorization</code> (EIP-3009) → gửi lại với header <code>X-Payment</code>. Dùng để mua credit và gọi dịch vụ trả phí.</li>
+    <li><b>Treasury policy:</b> trần mỗi lần chuyển, trần theo giờ/ngày, reserve tối thiểu, allowlist domain x402, budget inference/ngày — được thực thi bởi policy engine + bảng <code>spend_tracking</code>.</li>
+  </ul>
+  <p><b>Nhận xét:</b> ánh xạ “số dư → năng lực” (tier → routing matrix) là cơ chế graceful degradation gọn và dễ kiểm chứng. Điểm tinh tế đáng khen: khi API lỗi, loop trả về <b>số dư cache</b> thay vì 0, tránh chuyển nhầm sang trạng thái chết.</p>
+</section>
+
+<section id="security">
+  <h2>5. Bảo mật &amp; policy engine</h2>
+  <p>Mô hình defense-in-depth 7 lớp, tất cả chạy <b>trong cùng process</b> với agent:</p>
+  <div class="grid2">
+    <div class="card"><b>1. Constitution</b><p>3 luật phân cấp (Never harm › Earn your existence › Never deceive). File được bảo vệ, propagate + verify hash sang child.</p></div>
+    <div class="card"><b>2. Policy engine</b><p>Rule sắp theo priority, <b>deny đầu tiên thắng</b>, có mức “quarantine”. Mỗi quyết định ghi vào <code>policy_decisions</code> (kèm hash args).</p></div>
+    <div class="card"><b>3. Injection defense</b><p>8 bộ kiểm tra: instruction pattern, giả mạo authority, ChatML marker, encoding evasion, đa ngôn ngữ, thao túng tài chính…</p></div>
+    <div class="card"><b>4. Path protection</b><p>Chặn ghi wallet, DB, config, SOUL.md, constitution và một số file lõi; chặn đọc private key / API key.</p></div>
+    <div class="card"><b>5. Command safety</b><p>Pattern shell cấm (<code>rm -rf /</code>, <code>DROP TABLE</code>, <code>kill -9</code>…) + rate limit self-mod.</p></div>
+    <div class="card"><b>6–7. Tài chính &amp; authority</b><p>Treasury caps; phân cấp creator › self › peer › external — input từ peer/external không được gọi tool dangerous.</p></div>
+  </div>
+  <p style="margin-top:12px">Mỗi tool có <code>riskLevel</code> ∈ {safe, caution, dangerous, forbidden}; hiện có 18 tool mức dangerous/forbidden.</p>
+  <p><b>Nhận xét:</b> việc gắn <b>nguồn input (authority)</b> vào quyết định policy là lựa chọn đúng cho agent nhận tin nhắn từ người lạ. Nhưng mọi rào chắn đều là code TS chạy trong process mà agent có tool <code>exec</code> (shell) và <code>edit_own_file</code> — nên độ tin cậy của cả mô hình phụ thuộc vào việc “agent không thể sửa rào chắn của chính nó”. Xem mục <a href="#risks">Rủi ro</a>.</p>
+</section>
+
+<section id="inference">
+  <h2>6. Inference</h2>
+  <p>Hiện tồn tại <b>hai stack inference</b>:</p>
+  <div class="tbl"><table>
+    <tr><th></th><th>Stack A — agent loop chính</th><th>Stack B — orchestration/worker</th></tr>
+    <tr><td>Thành phần</td><td><code>InferenceRouter</code> + <code>ModelRegistry</code> (DB) + <code>InferenceBudgetTracker</code></td><td><code>ProviderRegistry</code> (file <code>inference-providers.json</code>) + <code>UnifiedInferenceClient</code></td></tr>
+    <tr><td>Khóa định tuyến</td><td>SurvivalTier × InferenceTaskType</td><td>ModelTier: reasoning / fast / cheap</td></tr>
+    <tr><td>Theo dõi chi phí</td><td>Ghi <code>inference_costs</code>, trần giờ/ngày/call</td><td>Không thấy ghi vào <code>inference_costs</code> trong <code>inference-client.ts</code></td></tr>
+    <tr><td>Provider</td><td>Conway proxy / OpenAI / Anthropic (BYOK) / Ollama local</td><td>OpenAI-compatible; fallback dùng Conway key làm <code>OPENAI_API_KEY</code></td></tr>
+  </table></div>
+  <p><b>Nhận xét:</b> stack B được thêm cùng tính năng orchestration và dường như chưa hợp nhất với stack A. Hệ quả tiềm năng: chi phí của worker <b>không đi qua budget tracker</b> — điều quan trọng với một hệ thống mà tiền = sự sống. <span class="muted">(Cần xác minh bằng runtime; ở mức đọc code, không thấy cầu nối cost.)</span></p>
+</section>
+
+<section id="memory">
+  <h2>7. Memory</h2>
+  <div class="grid2">
+    <div class="card">
+      <b>Đang chạy trong runtime</b>
+      <ul>
+        <li><b>Working</b> — goals/plans theo session</li>
+        <li><b>Episodic</b> — log sự kiện có importance</li>
+        <li><b>Semantic</b> — fact theo category</li>
+        <li><b>Procedural</b> — quy trình + đếm success/fail</li>
+        <li><b>Relationship</b> — trust score theo entity</li>
+      </ul>
+      <p class="muted"><code>MemoryRetriever</code> (trước inference, theo budget có rollover) + <code>MemoryIngestionPipeline</code> (sau turn).</p>
+    </div>
+    <div class="card">
+      <b>Có code + test nhưng chưa nối vào loop</b>
+      <ul>
+        <li><code>CompressionEngine</code> — cascade 5 giai đoạn ở ngưỡng 70/80/85/90/95% context</li>
+        <li><code>ContextManager</code> — đếm token bằng tiktoken</li>
+        <li><code>EnhancedRetriever</code>, <code>KnowledgeStore</code>, <code>EventStream</code> (một phần được ingestion/heartbeat dùng)</li>
+      </ul>
+      <p class="muted">Loop vẫn dùng <code>trimContext</code> đơn giản trong <code>agent/context.ts</code>. <code>CHECKPOINT_DIR</code> của compression engine là <code>.omc/state/checkpoints</code> tương đối theo cwd — dấu vết của công cụ dev, không phải <code>~/.automaton</code>.</p>
+    </div>
+  </div>
+</section>
+
+<section id="heartbeat">
+  <h2>8. Heartbeat daemon</h2>
+  <ul>
+    <li><code>setTimeout</code> nối tiếp (không <code>setInterval</code>) → không bao giờ 2 tick chồng nhau.</li>
+    <li><code>DurableScheduler</code> lưu lịch trong bảng <code>heartbeat_schedule</code>: cron, <b>lease TTL 60s</b> chống chạy trùng, tier tối thiểu cho từng task, lịch sử trong <code>heartbeat_history</code>, dedup key trong <code>heartbeat_dedup</code>.</li>
+    <li>Mỗi tick build <code>TickContext</code> — gọi số dư credit + USDC <b>một lần</b> rồi chia sẻ cho mọi task (tiết kiệm API call).</li>
+    <li>11 task: ping, check credits (quản lý grace period chết), check USDC, check upstream, health check, social inbox, soul reflection, refresh models, child health, prune children, report metrics.</li>
+    <li>Task muốn đánh thức agent → insert <code>wake_events</code> (tiêu thụ nguyên tử).</li>
+  </ul>
+  <p><b>Nhận xét:</b> đây là phần thiết kế chín chắn nhất — tách “nhịp tim rẻ tiền” khỏi “suy nghĩ đắt tiền”, và dùng DB làm hàng đợi bền vững nên restart không mất trạng thái. Lease hơi thừa khi chỉ có 1 process, nhưng giữ được khả năng mở rộng.</p>
+</section>
+
+<section id="orchestration">
+  <h2>9. Orchestration (mới, chưa có trong ARCHITECTURE.md)</h2>
+  <p>Kích hoạt khi DB có bảng <code>goals</code> (migration v9). Cho phép agent chính biến một mục tiêu lớn thành đồ thị task và giao cho “worker”.</p>
+  <pre>PlanModeController phases:
+idle → classifying → planning → plan_review → executing ⇄ replanning → complete | failed
+
+planner (LLM) ─► PlannerOutput { tasks[], customRoles[], risks, estimatedCost }
+               ─► task-graph (DAG, detectCycles, transaction) ─► getReadyTasks
+Orchestrator.tick() ─► matchTaskToAgent ─► LocalWorkerPool.spawn(task)  (in-process, "local://")
+                                          └► hoặc child sandbox qua replication
+HarnessRegistry: role → CodingHarness | OrchestratorHarness | GeneralHarness
+BaseHarness: vòng lặp tool riêng, LoopDetector, output ≤ 16k ký tự</pre>
+  <ul>
+    <li><b>Plan approval:</b> <code>auto</code> / <code>supervised</code> / <code>consensus</code> (critic role), ngưỡng auto theo budget, tối đa 3 lần replan.</li>
+    <li><b>Attention:</b> sinh <code>TODO.md</code> (≤ 2000 token) chèn vào context để agent không “quên” mục tiêu dài hạn — kỹ thuật tương tự “recitation” trong các coding agent.</li>
+    <li><b>Colony messaging:</b> transport qua DB local cho worker nội bộ.</li>
+  </ul>
+  <p><b>Nhận xét:</b> ý tưởng tốt (planner có ước lượng chi phí, phù hợp mô hình kinh tế), nhưng worker nội bộ <b>dùng chung tools, toolContext, policyEngine và <code>allowedEditRoot = process.cwd()</code></b> với agent cha — tức là không có ranh giới cô lập thật giữa các “agent” trong colony.</p>
+</section>
+
+<section id="replication">
+  <h2>10. Replication, identity &amp; social</h2>
+  <div class="grid2">
+    <div class="card"><b>Identity</b><p>Ví EVM (viem, secp256k1) hoặc Solana (Ed25519) tạo ở lần chạy đầu, lưu <code>wallet.json</code> mode 0600. Đăng nhập Conway bằng SIWE để lấy API key. Tùy chọn đăng ký ERC-8004 trên Base kèm agent card JSON-LD.</p></div>
+    <div class="card"><b>Replication</b><p>Spawn = tạo sandbox + viết genesis (có kiểm tra injection) + nạp tiền ví con + khởi động. State machine: spawning → provisioning → configuring → starting → alive → unhealthy → recovering → dead. Mặc định tối đa 3 con.</p></div>
+    <div class="card"><b>Social</b><p>Tin nhắn ký bằng private key, qua relay; kiểm tra chữ ký, độ tươi timestamp, kích thước; sanitize trước khi vào context. Reputation lưu local.</p></div>
+    <div class="card"><b>Self-mod &amp; Soul</b><p>Sửa source có audit log + git-version <code>~/.automaton</code>; cherry-pick từng commit upstream (không bắt buộc nhận hết). SOUL.md tự viết, reflection đo độ khớp Jaccard với genesis prompt, lưu lịch sử kèm hash.</p></div>
+  </div>
+</section>
+
+<section id="data">
+  <h2>11. Tầng dữ liệu</h2>
+  <ul>
+    <li><b>Một file SQLite</b> qua <code>better-sqlite3</code> (đồng bộ, WAL). Schema v11, migration chạy tăng dần khi khởi động.</li>
+    <li>Bảng chia theo nhóm: nhật ký suy nghĩ (<code>turns</code>, <code>tool_calls</code>), kiểm toán (<code>policy_decisions</code>, <code>modifications</code>, <code>spend_tracking</code>), điều phối (<code>heartbeat_*</code>, <code>wake_events</code>, <code>inbox_messages</code>), memory (5 bảng + summaries), orchestration (goals/tasks), replication (<code>children</code>, <code>child_lifecycle_events</code>), inference (<code>model_registry</code>, <code>inference_costs</code>).</li>
+    <li><code>database.ts</code> vừa có interface <code>AutomatonDatabase</code> (40+ method) vừa có ~60 hàm rời nhận <code>db.raw</code> — hai kiểu truy cập song song.</li>
+  </ul>
+  <p><b>Nhận xét:</b> SQLite đồng bộ là lựa chọn đúng cho agent đơn tiến trình (đơn giản, transaction thật, backup = copy file). Audit trail đầy đủ là điểm mạnh cho “creator có quyền kiểm toán”.</p>
+</section>
+
+<section id="strengths">
+  <h2>12. Điểm mạnh thiết kế</h2>
+  <ul>
+    <li><b>Mô hình kinh tế nhất quán xuyên suốt</b>: tier ảnh hưởng tới routing model, heartbeat, task nào được chạy — một biến điều khiển toàn hệ thống.</li>
+    <li><b>Tách heartbeat rẻ khỏi suy nghĩ đắt</b>, phối hợp qua wake event bền vững trong DB.</li>
+    <li><b>Mọi tool call đi qua một cửa (policy engine)</b> và đều được ghi audit — dễ điều tra sự cố.</li>
+    <li><b>Nhận thức về nguồn input</b>: tin nhắn từ peer/external bị giảm quyền, không gọi được tool nguy hiểm.</li>
+    <li><b>Chống lãng phí thực dụng</b>: loop/idle detection, trần tool/turn, cache số dư, circuit breaker HTTP.</li>
+    <li><b>Test khá dày</b> (~1.5k test case), có riêng test cho injection, command injection, path protection, financial.</li>
+    <li><b>Local mode</b>: <code>sandboxId</code> rỗng → chạy shell/FS local, dễ phát triển không cần cloud.</li>
+  </ul>
+</section>
+
+<section id="risks">
+  <h2>13. Rủi ro &amp; điểm yếu</h2>
+  <div class="tbl"><table>
+    <tr><th>Mức</th><th>Vấn đề</th><th>Bằng chứng / tác động</th></tr>
+    <tr><td><span class="pill p-high">Cao</span></td>
+      <td>Rào chắn và agent chạy chung process; danh sách file bảo vệ không phủ hết policy rules</td>
+      <td><code>PROTECTED_FILES</code> trong <code>self-mod/code.ts</code> chỉ gồm <code>policy-rules/index.ts</code>, không gồm <code>financial.ts</code>, <code>authority.ts</code>, <code>path-protection.ts</code>, <code>command-safety.ts</code>. Ngoài ra tool <code>exec</code> chạy shell tùy ý; path protection áp cho <code>edit_own_file</code>/<code>write_file</code>, còn shell phụ thuộc vào pattern cấm. Một agent bị thao túng có thể nới lỏng treasury policy ở lần build/restart tiếp theo.</td></tr>
+    <tr><td><span class="pill p-high">Cao</span></td>
+      <td>Chi phí inference của worker có thể nằm ngoài budget</td>
+      <td>Stack B (<code>UnifiedInferenceClient</code>) không ghi <code>inference_costs</code>; <code>InferenceBudgetTracker</code> chỉ gắn với stack A. Với hệ thống “hết tiền là chết”, đây là lỗ hổng kế toán.</td></tr>
+    <tr><td><span class="pill p-med">TB</span></td>
+      <td>Không cô lập giữa các agent trong colony</td>
+      <td>LocalWorkerPool dùng chung tools/policy/toolContext, <code>allowedEditRoot = process.cwd()</code>. Worker lỗi/bị inject ảnh hưởng thẳng tới agent cha.</td></tr>
+    <tr><td><span class="pill p-med">TB</span></td>
+      <td>Mutate biến môi trường toàn cục</td>
+      <td>Loop gán <code>process.env.OPENAI_API_KEY = conwayApiKey</code> và <code>OPENAI_BASE_URL</code> khi thiếu key — side effect ẩn, có thể khiến code/tool khác dùng nhầm key.</td></tr>
+    <tr><td><span class="pill p-med">TB</span></td>
+      <td>Tài liệu lệch code</td>
+      <td>ARCHITECTURE.md: 57 tool, schema v8, 22 bảng, idle = 3 turn, 24 file test. Code: ~77 tool, v11, 38 CREATE TABLE, idle = 10, 64 file test. Không mô tả <code>orchestration/</code>, harness, Solana.</td></tr>
+    <tr><td><span class="pill p-med">TB</span></td>
+      <td>“God files”</td>
+      <td><code>tools.ts</code> 3416 dòng (mọi tool + executor), <code>database.ts</code> 2540, <code>types.ts</code> 1468, <code>orchestrator.ts</code> 1232, <code>loop.ts</code> 1026. Khó review, và vì <code>tools.ts</code> là file bảo vệ nên mọi thay đổi tool đều phải qua con người — tốt cho an toàn nhưng xung đột với tầm nhìn “tự cải tiến”.</td></tr>
+    <tr><td><span class="pill p-low">Thấp</span></td>
+      <td>Code chưa nối vào runtime</td>
+      <td><code>CompressionEngine</code>, <code>ContextManager</code>, <code>EnhancedRetriever</code> chỉ được tham chiếu lẫn nhau và trong test. Tăng bề mặt bảo trì mà chưa mang giá trị.</td></tr>
+    <tr><td><span class="pill p-low">Thấp</span></td>
+      <td>Hai lớp truy cập DB + hai registry model</td>
+      <td>Interface <code>AutomatonDatabase</code> song song ~60 hàm rời; <code>ModelRegistry</code> (DB) song song <code>ProviderRegistry</code> (JSON) — hai nguồn sự thật về model/giá.</td></tr>
+    <tr><td><span class="pill p-low">Thấp</span></td>
+      <td>Thiếu lịch sử phát triển</td>
+      <td>Repo chỉ có 1 commit squash (“it's beautiful”); README cho biết phát triển tiếp diễn trong môi trường nội bộ → khó truy vết lý do các quyết định thiết kế.</td></tr>
+  </table></div>
+</section>
+
+<section id="recs">
+  <h2>14. Khuyến nghị (theo thứ tự đòn bẩy)</h2>
+  <ol>
+    <li><b>Đưa rào chắn ra khỏi tầm với của agent.</b> Bảo vệ cả thư mục <code>agent/policy-rules/</code> (và nói chung, whitelist file được sửa thay vì blacklist file cấm). Lâu dài: chạy policy/treasury như một tiến trình hoặc service riêng mà agent chỉ gọi qua IPC, hoặc ký/băm các module bảo mật và kiểm tra lúc khởi động.</li>
+    <li><b>Hợp nhất inference về một cổng duy nhất</b> có ghi chi phí + kiểm tra budget, để mọi đồng tiêu ra (kể cả của worker) đều đi qua treasury.</li>
+    <li><b>Cô lập worker</b>: tool set tối thiểu theo role (planner đã có <code>allowedTools</code>/<code>deniedTools</code> — hãy thực thi chúng ở tầng policy), treasury limit riêng từng worker, thư mục làm việc riêng.</li>
+    <li><b>Bỏ mutate <code>process.env</code></b>; truyền credential tường minh vào ProviderRegistry.</li>
+    <li><b>Tách <code>tools.ts</code></b> theo category (vm, conway, financial…) với một registry khai báo — kèm cờ <code>mutating</code> trên chính định nghĩa tool thay vì danh sách hard-code trong loop.</li>
+    <li><b>Nối hoặc xóa</b> compression engine / enhanced retriever; nếu giữ, đổi <code>CHECKPOINT_DIR</code> sang <code>~/.automaton</code>.</li>
+    <li><b>Sinh tài liệu từ code</b> (số tool, bảng, ngưỡng) trong CI để ARCHITECTURE.md không bị lệch nữa.</li>
+  </ol>
+</section>
+
+<footer>
+  Nguồn: đọc trực tiếp source của <a href="https://github.com/Conway-Research/automaton">github.com/Conway-Research/automaton</a> (commit <code>d8f8168</code>, 26/08/2026), gồm README.md, ARCHITECTURE.md, constitution.md và các file trong <code>src/</code>. Các con số (dòng code, số tool, số bảng, số test) được đếm bằng grep/wc nên là xấp xỉ. Nhận định có ghi “cần xác minh” chưa được kiểm chứng bằng cách chạy runtime.
+  <br>Phân tích tạo ngày 26/09/2026.
+</footer>
+
+</div>
+</body>
+</html>
